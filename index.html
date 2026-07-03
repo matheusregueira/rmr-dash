@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -115,6 +116,29 @@
     .agent-ai-body{display:none;padding:14px 18px 16px;border-top:1px solid var(--border);background:var(--surface2)}
     .agent-ai-body.open{display:block}
     .agent-saved-analysis{margin-top:12px;font-size:13px;line-height:1.7;white-space:pre-wrap;border-top:1px solid var(--border);padding-top:12px}
+
+    /* ── TPV M-1 por Cliente ─────────────────────────────────────── */
+    .tpv-toggle{border-top:1px solid var(--border);padding:10px 18px;display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;user-select:none}
+    .tpv-toggle:hover{background:var(--surface2)}
+    .tpv-body{display:none;padding:0 18px 16px;border-top:1px solid var(--border)}
+    .tpv-body.open{display:block}
+    .tpv-summary-pills{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 10px}
+    .tpv-pill{display:flex;align-items:center;gap:5px;background:var(--surface2);border-radius:20px;padding:4px 10px;font-size:11px;font-weight:600}
+    .tpv-pill-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+    .tpv-table{width:100%;border-collapse:collapse;font-size:12px}
+    .tpv-table th{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding:6px 8px;border-bottom:1px solid var(--border);text-align:left}
+    .tpv-table th:nth-child(2),.tpv-table th:nth-child(3),.tpv-table th:nth-child(4){text-align:right}
+    .tpv-table td{padding:7px 8px;border-bottom:1px solid rgba(51,65,85,.5);vertical-align:middle}
+    .tpv-table td:nth-child(2),.tpv-table td:nth-child(3),.tpv-table td:nth-child(4){text-align:right;font-family:monospace;font-size:11px}
+    .tpv-table tr:last-child td{border-bottom:none}
+    .tpv-table tr:hover td{background:rgba(255,255,255,.02)}
+    .tpv-mini-bar{height:4px;border-radius:2px;margin-top:3px;max-width:100%}
+    .tpv-name{font-weight:600;font-size:12px}
+    .tpv-upload-area{margin-top:12px;border:1.5px dashed var(--border);border-radius:10px;padding:14px;text-align:center}
+    .tpv-upload-area p{font-size:12px;color:var(--muted);margin-bottom:8px}
+    .tpv-file-input{display:none}
+    .tpv-geral-row{background:var(--surface2);font-weight:700}
+    .tpv-geral-row td{border-top:1px solid var(--border)!important;border-bottom:none!important}
   </style>
 </head>
 <body>
@@ -198,6 +222,8 @@ const MESES   = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','
 
 // ── State ─────────────────────────────────────────────────────────────────────
 var agentes = [], extras = {}, aiAnalysis = '';
+// tpvClientes: { [agId]: [ {nome, realizado, precificado} ] }
+var tpvClientes = {};
 
 // ── Utils ─────────────────────────────────────────────────────────────────────
 function getMesChave() {
@@ -227,10 +253,9 @@ function badgeHtml(status, id) {
 }
 function scoreClass(s) { return s>=100?'score-green':s>=50?'score-yellow':'score-red'; }
 function scoreColor(s) { return s>=100?'c-green':s>=50?'c-yellow':'c-red'; }
-function fmtBRL(v) { return 'R$ ' + Number(v).toLocaleString('pt-BR', {minimumFractionDigits:0, maximumFractionDigits:0}); }
+function fmtBRL(v) { return 'R$ ' + Number(v).toLocaleString('pt-BR', {minimumFractionDigits:0, maximumFractionDigits:0}); }
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function fmtMd(t) {
-  // bold: **text** -> <strong>text</strong>
   var tmp = "", rest = t, i1, i2;
   while ((i1 = rest.indexOf("**")) !== -1) {
     i2 = rest.indexOf("**", i1 + 2);
@@ -239,34 +264,27 @@ function fmtMd(t) {
     rest = rest.substring(i2 + 2);
   }
   t = tmp + rest;
-  // Lines processing
   var lines = t.split("\n"), out = [], inList = false;
   for (var j = 0; j < lines.length; j++) {
     var l = lines[j];
-    // h3
     if (l.substring(0,4) === "### ") { if(inList){out.push("</ul>");inList=false;} out.push("<h4 style='margin:14px 0 4px;font-size:13px;color:var(--accent)'>" + l.substring(4) + "</h4>"); continue; }
-    // h2
     if (l.substring(0,3) === "## ") { if(inList){out.push("</ul>");inList=false;} out.push("<h3 style='margin:16px 0 6px;font-size:15px;font-weight:700'>" + l.substring(3) + "</h3>"); continue; }
-    // h1
     if (l.substring(0,2) === "# ") { if(inList){out.push("</ul>");inList=false;} out.push("<h2 style='margin:18px 0 8px;font-size:17px;font-weight:700'>" + l.substring(2) + "</h2>"); continue; }
-    // numbered list like "1. " or "2. "
     if (l.length > 2 && l[1] === "." && l[2] === " ") { if(inList){out.push("</ul>");inList=false;} out.push("<p style='margin:10px 0 4px'>" + l + "</p>"); continue; }
     if (l.length > 3 && l[2] === "." && l[3] === " ") { if(inList){out.push("</ul>");inList=false;} out.push("<p style='margin:10px 0 4px'>" + l + "</p>"); continue; }
-    // bullet
     if (l.substring(0,2) === "- " || l.substring(0,2) === "* ") {
       if (!inList) { out.push("<ul style='margin:4px 0 4px 16px;padding:0'>"); inList = true; }
       out.push("<li style='margin:3px 0'>" + l.substring(2) + "</li>"); continue;
     }
     if (inList) { out.push("</ul>"); inList = false; }
-    // hr
     if (l.substring(0,3) === "---") { out.push("<hr style='border:none;border-top:1px solid var(--border);margin:12px 0'>"); continue; }
-    // empty
     if (l.trim() === "") { out.push("<div style='height:6px'></div>"); continue; }
     out.push("<p style='margin:2px 0'>" + l + "</p>");
   }
   if (inList) out.push("</ul>");
   return out.join("");
-}function showMsg(id, txt, color) {
+}
+function showMsg(id, txt, color) {
   var el = document.getElementById(id);
   el.textContent = txt; el.style.display = 'block'; el.style.color = color||'var(--accent)';
   setTimeout(function(){ el.style.display='none'; }, 3500);
@@ -277,7 +295,7 @@ function localKey() { return 'rmr3_' + getMesChave(); }
 function saveLocal() {
   localStorage.setItem(localKey(), JSON.stringify({
     agentes: agentes, extras: extras, aiAnalysis: aiAnalysis,
-    diasUteis: getDU()
+    diasUteis: getDU(), tpvClientes: tpvClientes
   }));
 }
 function loadLocal() {
@@ -285,10 +303,11 @@ function loadLocal() {
   if (d) {
     var p = JSON.parse(d);
     agentes = p.agentes || []; extras = p.extras || {}; aiAnalysis = p.aiAnalysis || '';
+    tpvClientes = p.tpvClientes || {};
     document.getElementById('dias-uteis').value = p.diasUteis || 22;
     return true;
   }
-  agentes = []; extras = {}; aiAnalysis = '';
+  agentes = []; extras = {}; aiAnalysis = ''; tpvClientes = {};
   return false;
 }
 
@@ -316,7 +335,7 @@ async function importarDoSupabase() {
   }
 }
 
-// ── Score cálculo (igual ao dash-metas) ──────────────────────────────────────
+// ── Score cálculo ─────────────────────────────────────────────────────────────
 function calcScore(ag) {
   var r = ag.realizado || {};
   var naA    = ag.naMeta    > 0 ? (r.na    ||0) / ag.naMeta    * 100 : 0;
@@ -325,6 +344,208 @@ function calcScore(ag) {
   var pNA = (ag.pesoNA??30)/100, pTPV = (ag.pesoTPV??40)/100, pChurn = (ag.pesoChurn??30)/100;
   var bonus = (r.bonus||0)>0 && naA>0 ? (r.bonus * naA * 0.25) * pNA : 0;
   return { naA, tpvA, churnA, score: naA*pNA + tpvA*pTPV + churnA*pChurn + bonus };
+}
+
+// ── TPV Clientes: parse Excel ─────────────────────────────────────────────────
+function parseTpvExcel(file, agId, callback) {
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      // Parse TSV/CSV simples ou tenta decodificar como texto
+      var text = e.target.result;
+      var rows = text.split('\n').map(function(r){ return r.split('\t'); });
+      // Detecta cabeçalho: busca coluna "Cliente", "TPV M1", "TPV Precificado"
+      var header = rows[0].map(function(h){ return h.trim().toLowerCase(); });
+      var iCliente = header.findIndex(function(h){ return h.includes('cliente'); });
+      var iReal    = header.findIndex(function(h){ return h.includes('tpv m1') || (h.includes('tpv') && h.includes('m1')); });
+      var iPrec    = header.findIndex(function(h){ return h.includes('precificado'); });
+      if (iCliente < 0 || iReal < 0 || iPrec < 0) {
+        alert('Formato não reconhecido. Certifique-se que o arquivo tem colunas: Cliente, TPV M1, TPV Precificado');
+        return;
+      }
+      var clientes = [];
+      for (var i = 1; i < rows.length; i++) {
+        var row = rows[i];
+        if (!row || !row[iCliente] || row[iCliente].trim() === '') continue;
+        var nome = row[iCliente].trim();
+        var real = parseFloat((row[iReal]||'0').replace(/[^\d,.-]/g,'').replace(',','.')) || 0;
+        var prec = parseFloat((row[iPrec]||'0').replace(/[^\d,.-]/g,'').replace(',','.')) || 0;
+        if (prec > 0) clientes.push({ nome: nome, realizado: real, precificado: prec });
+      }
+      callback(clientes);
+    } catch(err) {
+      alert('Erro ao processar arquivo: ' + err.message);
+    }
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+
+// Converte xlsx via FileReader binário + SheetJS (se disponível) ou fallback TSV
+function processarArquivoTpv(file, agId) {
+  // Tenta como texto primeiro (funciona para CSV/TSV exportado do BI)
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var text = e.target.result;
+    // Remove BOM
+    if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+    // Detecta separador
+    var sep = text.indexOf('\t') > -1 ? '\t' : ',';
+    var rows = text.split('\n').map(function(r){ return r.split(sep).map(function(c){ return c.trim().replace(/^"|"$/g,''); }); });
+    var header = rows[0].map(function(h){ return h.toLowerCase(); });
+    var iCliente = header.findIndex(function(h){ return h === 'cliente'; });
+    var iReal    = header.findIndex(function(h){ return h === 'tpv m1'; });
+    var iPrec    = header.findIndex(function(h){ return h === 'tpv precificado'; });
+
+    if (iCliente < 0 || iReal < 0 || iPrec < 0) {
+      alert('Colunas não encontradas.\nEsperado: Cliente | TPV M1 | TPV Precificado\nEncontrado: ' + header.join(' | '));
+      return;
+    }
+
+    var clientes = [];
+    for (var i = 1; i < rows.length; i++) {
+      var row = rows[i];
+      if (!row[iCliente] || row[iCliente] === '') continue;
+      // Ignora linhas de filtro ("Filtros aplicados")
+      if (row[iCliente].toLowerCase().includes('filtro')) continue;
+      var real = parseFloat((row[iReal]||'').replace(',','.')) || 0;
+      var prec = parseFloat((row[iPrec]||'').replace(',','.')) || 0;
+      if (prec > 0) clientes.push({ nome: row[iCliente], realizado: real, precificado: prec });
+    }
+
+    if (clientes.length === 0) {
+      alert('Nenhum cliente encontrado no arquivo. Verifique se é o export correto do BI Stone.');
+      return;
+    }
+
+    tpvClientes[agId] = clientes;
+    saveLocal();
+    // Re-render só a seção TPV desse agente
+    renderTpvSection(agId);
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+
+// ── TPV Section render ────────────────────────────────────────────────────────
+function tpvStatusColor(pct) {
+  if (pct >= 70)  return 'var(--accent)';
+  if (pct > 0)    return 'var(--yellow)';
+  return 'var(--red)';
+}
+function tpvStatusLabel(pct) {
+  if (pct >= 70)  return '✓';
+  if (pct > 0)    return '~';
+  return '✗';
+}
+
+function buildTpvSectionHtml(agId) {
+  var clientes = tpvClientes[agId] || [];
+  var hasData  = clientes.length > 0;
+
+  // Summary stats
+  var totalReal = 0, totalPrec = 0, nBom = 0, nAtencao = 0, nZero = 0;
+  if (hasData) {
+    clientes.forEach(function(c) {
+      totalReal += c.realizado; totalPrec += c.precificado;
+      var pct = c.precificado > 0 ? (c.realizado / c.precificado * 100) : 0;
+      if (pct >= 70) nBom++;
+      else if (pct > 0) nAtencao++;
+      else nZero++;
+    });
+  }
+  var geralPct = totalPrec > 0 ? (totalReal / totalPrec * 100) : 0;
+  var geralColor = tpvStatusColor(geralPct);
+
+  // Sort: bom → atenção → zero, dentro de cada grupo por % desc
+  var sorted = hasData ? clientes.slice().sort(function(a,b){
+    var pA = a.precificado > 0 ? a.realizado/a.precificado : 0;
+    var pB = b.precificado > 0 ? b.realizado/b.precificado : 0;
+    return pB - pA;
+  }) : [];
+
+  var tableRows = sorted.map(function(c) {
+    var pct = c.precificado > 0 ? (c.realizado / c.precificado * 100) : 0;
+    var color = tpvStatusColor(pct);
+    var barW  = Math.min(pct, 100);
+    return '<tr>'+
+      '<td>'+
+        '<div class="tpv-name">'+esc(c.nome)+'</div>'+
+        '<div class="tpv-mini-bar" style="width:'+barW+'%;background:'+color+'"></div>'+
+      '</td>'+
+      '<td>'+fmtBRL(c.precificado)+'</td>'+
+      '<td style="color:'+(c.realizado>0?'var(--text)':'var(--red)')+'">'+fmtBRL(c.realizado)+'</td>'+
+      '<td><span style="color:'+color+';font-weight:700">'+pct.toFixed(0)+'%</span></td>'+
+    '</tr>';
+  }).join('');
+
+  var geralRow = hasData ? '<tr class="tpv-geral-row">'+
+    '<td>TOTAL</td>'+
+    '<td>'+fmtBRL(totalPrec)+'</td>'+
+    '<td>'+fmtBRL(totalReal)+'</td>'+
+    '<td><span style="color:'+geralColor+';font-weight:700">'+geralPct.toFixed(0)+'%</span></td>'+
+  '</tr>' : '';
+
+  return '<div class="tpv-summary-pills">'+
+    (hasData ? [
+      '<div class="tpv-pill"><div class="tpv-pill-dot" style="background:var(--accent)"></div>'+nBom+' bom (70%+)</div>',
+      '<div class="tpv-pill"><div class="tpv-pill-dot" style="background:var(--yellow)"></div>'+nAtencao+' atenção</div>',
+      '<div class="tpv-pill"><div class="tpv-pill-dot" style="background:var(--red)"></div>'+nZero+' zero</div>',
+      '<div class="tpv-pill" style="margin-left:auto"><span style="color:'+geralColor+';font-weight:800">'+geralPct.toFixed(0)+'%</span>&nbsp;geral</div>'
+    ].join('') : '<span style="font-size:12px;color:var(--muted)">Nenhum arquivo carregado</span>')+
+  '</div>'+
+  (hasData ? '<table class="tpv-table">'+
+    '<thead><tr><th>Cliente</th><th>Precificado</th><th>Realizado M-1</th><th>%</th></tr></thead>'+
+    '<tbody>'+tableRows+geralRow+'</tbody>'+
+  '</table>' : '')+
+  '<div class="tpv-upload-area" id="tpv-upload-'+agId+'">'+
+    '<p>'+(hasData ? '&#8635; Substituir arquivo' : '&#128196; Importar export do BI Stone')+' &mdash; CSV ou XLSX (colunas: Cliente, TPV M1, TPV Precificado)</p>'+
+    '<label class="btn btn-secondary" style="cursor:pointer;display:inline-flex">'+
+      '&#128228; Carregar arquivo'+
+      '<input type="file" class="tpv-file-input" accept=".csv,.tsv,.xlsx,.xls" onchange="handleTpvFile(event,\''+agId+'\')" />'+
+    '</label>'+
+    (hasData ? '&nbsp;<button class="btn btn-secondary" style="color:var(--red)" onclick="limparTpv(\''+agId+'\')">&#10005; Remover</button>' : '')+
+  '</div>';
+}
+
+function renderTpvSection(agId) {
+  var body = document.getElementById('tpv-body-'+agId);
+  if (!body) return;
+  body.innerHTML = buildTpvSectionHtml(agId);
+  // Atualiza chip no toggle
+  var chip = document.getElementById('tpv-chip-'+agId);
+  var clientes = tpvClientes[agId] || [];
+  if (chip) {
+    if (clientes.length > 0) {
+      var totalReal = clientes.reduce(function(s,c){return s+c.realizado;},0);
+      var totalPrec = clientes.reduce(function(s,c){return s+c.precificado;},0);
+      var pct = totalPrec > 0 ? (totalReal/totalPrec*100) : 0;
+      var color = tpvStatusColor(pct);
+      chip.innerHTML = '<span style="color:'+color+';font-weight:800">'+pct.toFixed(0)+'%</span> &middot; '+clientes.length+' clientes';
+      chip.style.display = '';
+    } else {
+      chip.style.display = 'none';
+    }
+  }
+}
+
+function handleTpvFile(event, agId) {
+  var file = event.target.files[0];
+  if (!file) return;
+  processarArquivoTpv(file, agId);
+}
+
+function limparTpv(agId) {
+  delete tpvClientes[agId];
+  saveLocal();
+  renderTpvSection(agId);
+}
+
+function toggleTpv(agId) {
+  var body = document.getElementById('tpv-body-'+agId);
+  if (!body) return;
+  var isOpen = body.classList.contains('open');
+  body.classList.toggle('open');
+  var btn = document.getElementById('tpv-btn-'+agId);
+  if (btn) btn.textContent = isOpen ? 'Ver' : 'Fechar';
 }
 
 // ── Render all ────────────────────────────────────────────────────────────────
@@ -368,10 +589,8 @@ function buildAgentCard(ag) {
   var du  = getDU();
   var sc  = calcScore(ag);
 
-  // Supabase KPIs
   var naA = sc.naA, tpvA = sc.tpvA, churnA = sc.churnA;
 
-  // Extra KPIs — raw totals
   var ppTot  = Number(ex.propostas)     || 0;
   var ttTot  = Number(ex.tarefasTotais) || 0;
   var tvTot  = Number(ex.tarefasVendas) || 0;
@@ -379,14 +598,24 @@ function buildAgentCard(ag) {
   var reTot  = Number(ex.reunioes)      || 0;
   var tpvMed = Number(ex.tpvMedio)      || 0;
 
-  // Per-day rates
   var ppDia = ppTot / du, ttDia = ttTot / du, tvDia = tvTot / du;
   var tdPct = tvTot > 0 ? tdTot / tvTot : 0;
+
+  // TPV clientes chip
+  var clientes = tpvClientes[ag.id] || [];
+  var tpvChipHtml = '';
+  if (clientes.length > 0) {
+    var tR = clientes.reduce(function(s,c){return s+c.realizado;},0);
+    var tP = clientes.reduce(function(s,c){return s+c.precificado;},0);
+    var pct = tP > 0 ? (tR/tP*100) : 0;
+    tpvChipHtml = '<span id="tpv-chip-'+ag.id+'" style="color:'+tpvStatusColor(pct)+';font-weight:800;font-size:12px">'+pct.toFixed(0)+'% &middot; '+clientes.length+' clientes</span>';
+  } else {
+    tpvChipHtml = '<span id="tpv-chip-'+ag.id+'" style="display:none"></span>';
+  }
 
   var div = document.createElement('div');
   div.className = 'agent-card';
   div.innerHTML =
-    // Header
     '<div class="agent-header">'+
       '<div>'+
         '<div class="agent-name">'+esc(ag.nome)+'</div>'+
@@ -395,12 +624,10 @@ function buildAgentCard(ag) {
       '<div class="score-chip '+scoreClass(sc.score)+'">'+sc.score.toFixed(1)+'%</div>'+
     '</div>'+
     '<div class="agent-body">'+
-      // Metas oficiais
       '<div class="section-label">Metas Oficiais</div>'+
       kpiBarHtml('NA', ag.naMeta, r.na||0, naA, false, false)+
       kpiBarHtml('TPV M1', ag.tpvMeta, r.tpv||0, tpvA, false, true)+
       kpiBarHtml('Churn', ag.churnMeta, r.churn||0, churnA, true, false)+
-      // Atividade
       '<div class="section-label" style="margin-top:10px">Atividade</div>'+
       extraRowHtml(ag.id,'tpvMedio','TPV M&#233;dio / Credenciado (M0)',tpvMed,tpvMed?fmtBRL(tpvMed):'—',filled(ex,'tpvMedio')?classify(tpvMed,TH.tpvMedio):null,'R$')+
       extraRowHtml(ag.id,'propostas','Propostas',ppTot,filled(ex,'propostas')?ppDia.toFixed(2)+'/dia':'—',filled(ex,'propostas')?classify(ppDia,TH.propostas):null)+
@@ -409,7 +636,18 @@ function buildAgentCard(ag) {
       extraRowHtml(ag.id,'td','TD sim',tdTot,filled(ex,'td')&&tvTot>0?(tdPct*100).toFixed(1)+'% de TDs':'—',filled(ex,'td')&&tvTot>0?classify(tdPct,TH.td):null)+
       extraRowHtml(ag.id,'reunioes','Reuniões Agendadas',reTot,filled(ex,'reunioes')?reTot+' no mês':'—',filled(ex,'reunioes')?classify(reTot,TH.reunioes):null)+
     '</div>'+
-    // Análise individual
+    // ── TPV M-1 por Cliente ──
+    '<div class="tpv-toggle" onclick="toggleTpv(\''+ag.id+'\')" >'+
+      '<div style="display:flex;align-items:center;gap:10px">'+
+        '<span style="font-size:12px;color:var(--muted)">&#128200; Performance TPV M-1 por Cliente</span>'+
+        tpvChipHtml+
+      '</div>'+
+      '<button id="tpv-btn-'+ag.id+'" class="btn btn-secondary" style="padding:5px 12px;font-size:12px;pointer-events:none">Ver</button>'+
+    '</div>'+
+    '<div class="tpv-body" id="tpv-body-'+ag.id+'">'+
+      buildTpvSectionHtml(ag.id)+
+    '</div>'+
+    // ── Análise individual ──
     agentAiSection(ag.id, ag.nome, ex.aiAnalysis||'');
   return div;
 }
@@ -428,7 +666,6 @@ function kpiBarHtml(nome, meta, real, ating, inverso, isMoney) {
   '</div>';
 }
 
-
 function extraRowHtml(agId, field, label, val, rateStr, status, placeholder) {
   var ph = placeholder || '0';
   return '<div class="extra-row">'+
@@ -445,7 +682,6 @@ function extraRowHtml(agId, field, label, val, rateStr, status, placeholder) {
   '</div>';
 }
 
-// ── Update extra KPI (targeted DOM update, no re-render) ─────────────────────
 function updateExtra(agId, field, value) {
   if (!extras[agId]) extras[agId] = {};
   extras[agId][field] = value;
@@ -453,13 +689,12 @@ function updateExtra(agId, field, value) {
 
   var du  = getDU();
   var ex  = extras[agId];
-  var tv  = Number(ex.tarefasVendas) || 0;
 
   function patch(f, rateStr, status) {
     var rEl = document.getElementById('rate-'+agId+'-'+f);
     var bEl = document.getElementById('badge-'+agId+'-'+f);
     if (rEl) rEl.textContent = rateStr;
-    if (bEl) { var nb = document.createElement('span'); nb.outerHTML = badgeHtml(status,'badge-'+agId+'-'+f); bEl.outerHTML = badgeHtml(status,'badge-'+agId+'-'+f); }
+    if (bEl) { bEl.outerHTML = badgeHtml(status,'badge-'+agId+'-'+f); }
   }
 
   var pp = Number(ex.propostas)||0,     ppDia = pp/du;
@@ -467,28 +702,28 @@ function updateExtra(agId, field, value) {
   var tvN = Number(ex.tarefasVendas)||0, tvDia = tvN/du;
   var td = Number(ex.td)||0,            tdPct = tvN>0?td/tvN:0;
   var re = Number(ex.reunioes)||0;
-
   var tm = Number(ex.tpvMedio)||0;
-  patch('tpvMedio',      filled(ex,'tpvMedio')  ? fmtBRL(tm)                      : '—', filled(ex,'tpvMedio')            ? classify(tm,   TH.tpvMedio)       : null);
-  patch('propostas',     filled(ex,'propostas') ? ppDia.toFixed(2)+'/dia'          : '—', filled(ex,'propostas')           ? classify(ppDia,TH.propostas)       : null);
-  patch('tarefasTotais', filled(ex,'tarefasTotais') ? ttDia.toFixed(2)+'/dia'      : '—', filled(ex,'tarefasTotais')       ? classify(ttDia,TH.tarefasTotais)   : null);
-  patch('tarefasVendas', filled(ex,'tarefasVendas') ? tvDia.toFixed(2)+'/dia'      : '—', filled(ex,'tarefasVendas')       ? classify(tvDia,TH.tarefasVendas)   : null);
-  patch('td',            filled(ex,'td')&&tvN>0  ? (tdPct*100).toFixed(1)+'% de TDs': '—', filled(ex,'td')&&tvN>0          ? classify(tdPct,TH.td)               : null);
-  patch('reunioes',      filled(ex,'reunioes')   ? re+' no mês'                    : '—', filled(ex,'reunioes')            ? classify(re,   TH.reunioes)         : null);
+
+  patch('tpvMedio',      filled(ex,'tpvMedio')       ? fmtBRL(tm)                       : '—', filled(ex,'tpvMedio')             ? classify(tm,   TH.tpvMedio)       : null);
+  patch('propostas',     filled(ex,'propostas')      ? ppDia.toFixed(2)+'/dia'           : '—', filled(ex,'propostas')            ? classify(ppDia,TH.propostas)       : null);
+  patch('tarefasTotais', filled(ex,'tarefasTotais')  ? ttDia.toFixed(2)+'/dia'           : '—', filled(ex,'tarefasTotais')        ? classify(ttDia,TH.tarefasTotais)   : null);
+  patch('tarefasVendas', filled(ex,'tarefasVendas')  ? tvDia.toFixed(2)+'/dia'           : '—', filled(ex,'tarefasVendas')        ? classify(tvDia,TH.tarefasVendas)   : null);
+  patch('td',            filled(ex,'td')&&tvN>0      ? (tdPct*100).toFixed(1)+'% de TDs' : '—', filled(ex,'td')&&tvN>0           ? classify(tdPct,TH.td)               : null);
+  patch('reunioes',      filled(ex,'reunioes')       ? re+' no mês'                      : '—', filled(ex,'reunioes')            ? classify(re,   TH.reunioes)         : null);
 }
 
 function onDiasUteis() {
   saveLocal();
   if (!agentes.length) return;
-  // Re-render all agent cards (dias úteis affects all rates)
   renderAgentes();
 }
 
-// ── Prompt ───────────────────────────────────────────────────────────────────
+// ── AI ────────────────────────────────────────────────────────────────────────
+function renderAI() {}
+
 function buildPrompt() {
   if (!agentes.length) return null;
   var du = getDU(), ml = getMesLabel();
-
   var scores = agentes.map(function(ag){ return calcScore(ag).score; });
   var avgScore = (scores.reduce(function(s,v){return s+v;},0)/scores.length).toFixed(1);
 
@@ -524,23 +759,12 @@ function buildPrompt() {
     'Analise os resultados da Reunião Mensal de Resultado (RMR) e gere um relatório completo.\n\n'+
     'Mês: '+ml+'\nDias úteis: '+du+'\nAgentes: '+agentes.length+'\nMédia de score: '+avgScore+'%\n\n'+
     'RESULTADOS INDIVIDUAIS:\n\n'+lines+'\n\n'+
-    'Barras de referência de atividade:\n'+
-    '  Propostas: ≥2/dia=Ótimo, 1,5-1,99=Bom, <1,5=Ruim\n'+
-    '  Tarefas Totais: ≥10/dia=Ótimo, 7-9,9=Bom, <7=Ruim\n'+
-    '  Tarefas de Vendas: ≥7/dia=Ótimo, 5-6,9=Bom, <5=Ruim\n'+
-    '  TD: ≥30% de TDs=Ótimo, 15-29%=Bom, <15%=Ruim\n'+
-    '  Reuniões: ≥9/mês=Ótimo, 6-8=Bom, <6=Ruim\n'+
-    '  TPV Médio/Cred: ≥R$30k=Ótimo, R$20k-29,9k=Bom, <R$20k=Ruim\n\n'+
     'Gere um relatório com:\n\n'+
-    '1. **Panorama Geral** — avaliação do resultado coletivo (scores + atividade)\n'+
-    '2. **Pontos Fortes** — o que está indo bem (cita nomes e dados concretos)\n'+
-    '3. **Pontos de Melhoria** — onde evoluir (cita nomes, com empatia e dados)\n'+
-    '4. **Ações Recomendadas** — 3 sugestões práticas e específicas para o próximo mês\n'+
-    '5. **Mensagem para a Turma** — texto motivacional curto para encerrar a reunião\n\n'+
-    'Linguagem: direta, objetiva, respeitosa. Foque nos dados.';
+    '1. **Panorama Geral**\n2. **Pontos Fortes**\n3. **Pontos de Melhoria**\n4. **Ações Recomendadas**\n5. **Mensagem para a Turma**\n\n'+
+    'Linguagem: direta, objetiva, respeitosa.';
 }
 
-// ── Per-agent AI section HTML ─────────────────────────────────────────────────
+// ── Per-agent AI section ──────────────────────────────────────────────────────
 function agentAiSection(agId, agNome, savedAnalysis) {
   var hasAnalysis = savedAnalysis && savedAnalysis.trim();
   return '<div class="agent-ai-toggle">'+
@@ -571,22 +795,15 @@ function agentAiSection(agId, agNome, savedAnalysis) {
         '<button class="btn btn-secondary" onclick="clearAgentAnalysis(\''+agId+'\')">&#10005; Remover</button>'+
       '</div>'+
     '</div>'+
-    // Meta próximo mês
     '<div class="step-box" style="margin-top:10px;margin-bottom:0">'+
       '<div class="step-num">Meta do M&#234;s &mdash; sai na &#250;ltima folha do PDF</div>'+
       '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px">'+
-        '<div>'+
-          '<div style="font-size:11px;color:var(--muted);margin-bottom:4px">NA</div>'+
-          '<input type="number" id="meta-na-'+agId+'" class="kpi-input" style="width:100%" placeholder="Ex: 12" value="'+esc((extras[agId]||{}).metaNA||'')+'" oninput="saveMetaCampos(\''+agId+'\')"/>'+
-        '</div>'+
-        '<div>'+
-          '<div style="font-size:11px;color:var(--muted);margin-bottom:4px">TPV M1 (R$)</div>'+
-          '<input type="number" id="meta-tpv-'+agId+'" class="kpi-input" style="width:100%" placeholder="Ex: 250000" value="'+esc((extras[agId]||{}).metaTPV||'')+'" oninput="saveMetaCampos(\''+agId+'\')"/>'+
-        '</div>'+
-        '<div>'+
-          '<div style="font-size:11px;color:var(--muted);margin-bottom:4px">Churn (%)</div>'+
-          '<input type="number" id="meta-churn-'+agId+'" class="kpi-input" style="width:100%" placeholder="Ex: 5.5" step="0.1" value="'+esc((extras[agId]||{}).metaChurn||'')+'" oninput="saveMetaCampos(\''+agId+'\')"/>'+
-        '</div>'+
+        '<div><div style="font-size:11px;color:var(--muted);margin-bottom:4px">NA</div>'+
+          '<input type="number" id="meta-na-'+agId+'" class="kpi-input" style="width:100%" placeholder="Ex: 12" value="'+esc((extras[agId]||{}).metaNA||'')+'" oninput="saveMetaCampos(\''+agId+'\')"/></div>'+
+        '<div><div style="font-size:11px;color:var(--muted);margin-bottom:4px">TPV M1 (R$)</div>'+
+          '<input type="number" id="meta-tpv-'+agId+'" class="kpi-input" style="width:100%" placeholder="Ex: 250000" value="'+esc((extras[agId]||{}).metaTPV||'')+'" oninput="saveMetaCampos(\''+agId+'\')"/></div>'+
+        '<div><div style="font-size:11px;color:var(--muted);margin-bottom:4px">Churn (%)</div>'+
+          '<input type="number" id="meta-churn-'+agId+'" class="kpi-input" style="width:100%" placeholder="Ex: 5.5" step="0.1" value="'+esc((extras[agId]||{}).metaChurn||'')+'" oninput="saveMetaCampos(\''+agId+'\')"/></div>'+
       '</div>'+
     '</div>'+
   '</div>';
@@ -631,6 +848,27 @@ function buildAgentPrompt(ag) {
   var re = Number(ex.reunioes)||0;
   var tm = Number(ex.tpvMedio)||0;
 
+  // TPV clientes
+  var clientes = tpvClientes[ag.id] || [];
+  var tpvClientesStr = '';
+  if (clientes.length > 0) {
+    var totalReal = clientes.reduce(function(s,c){return s+c.realizado;},0);
+    var totalPrec = clientes.reduce(function(s,c){return s+c.precificado;},0);
+    var geralPct  = totalPrec > 0 ? (totalReal/totalPrec*100) : 0;
+    var nBom = clientes.filter(function(c){ return c.precificado>0 && c.realizado/c.precificado>=0.7; }).length;
+    var nZero= clientes.filter(function(c){ return c.realizado===0; }).length;
+    var criticos = clientes.filter(function(c){ return c.realizado===0 || (c.precificado>0 && c.realizado/c.precificado<0.7); })
+      .sort(function(a,b){ return b.precificado - a.precificado; }).slice(0,5);
+    tpvClientesStr = '\nPERFORMANCE TPV M-1 POR CLIENTE:\n'+
+      '  Geral: '+geralPct.toFixed(0)+'% ('+fmtBRL(totalReal)+' / '+fmtBRL(totalPrec)+')\n'+
+      '  Bons (70%+): '+nBom+' | Zero: '+nZero+' | Total: '+clientes.length+'\n'+
+      '  Críticos (sem TPV ou <70%):\n'+
+      criticos.map(function(c){
+        var pct = c.precificado>0?(c.realizado/c.precificado*100):0;
+        return '    - '+c.nome+': '+pct.toFixed(0)+'% (real: '+fmtBRL(c.realizado)+' / prec: '+fmtBRL(c.precificado)+')';
+      }).join('\n');
+  }
+
   function st(val, th) { var s=classify(val,th); return s==='otimo'?'Ótimo':s==='bom'?'Bom':'Ruim'; }
 
   return 'Você é um especialista em gestão comercial e coaching de equipes de vendas da Stone.\n\n'+
@@ -647,26 +885,30 @@ function buildAgentPrompt(ag) {
     '  Tarefas Totais: '+tt+' → '+ttDia.toFixed(2)+'/dia'+(tt?' ('+st(ttDia,TH.tarefasTotais)+')':' (sem dado)')+'\n'+
     '  Tarefas de Vendas: '+tv+' → '+tvDia.toFixed(2)+'/dia'+(tv?' ('+st(tvDia,TH.tarefasVendas)+')':' (sem dado)')+'\n'+
     '  TD: '+td+(td&&tv?' → '+(tdPct*100).toFixed(1)+'% das tarefas de vendas ('+st(tdPct,TH.td)+')':' (sem dado)')+'\n'+
-    '  Reuniões: '+re+(re?' ('+st(re,TH.reunioes)+')':' (sem dado)')+'\n\n'+
-    'Barras: Propostas ≥2/dia, Tarefas ≥10/dia, Tarefas Vendas ≥7/dia, TD ≥30% de TDs, Reuniões ≥9/mês, TPV Médio ≥R$30k\n'+
-    'ATENÇÃO: O indicador TD deve aparecer como "TD sim" e a coluna de % deve mostrar "% de TDs" — NUNCA "TVs" ou "tvs".\n\n'+
+    '  Reuniões: '+re+(re?' ('+st(re,TH.reunioes)+')':' (sem dado)')+
+    tpvClientesStr+'\n\n'+
+    'ATENÇÃO: O indicador TD deve aparecer como "TD sim". NUNCA "TVs".\n\n'+
     'FORMATO DE SAÍDA: Gere um arquivo HTML completo e auto-contido (único arquivo, com CSS inline no <style>, sem dependências externas exceto Google Fonts). NÃO use markdown — gere apenas HTML.\n\n'+
     'Design do HTML:\n'+
     '- Fundo claro (#f5f4f0), tipografia limpa com Google Fonts (Syne para títulos, Inter para corpo, JetBrains Mono para dados)\n'+
     '- Header com nome do agente em destaque, score geral e data\n'+
     '- Grid de cards para os KPIs oficiais (verde/amarelo/vermelho conforme status)\n'+
-    '- Tabela de atividade com barras de progresso e pills de status\n'+
-    '- Seções numeradas (01, 02, 03...) para a análise\n'+
-    '- Seção de feedback final com fundo escuro e texto em destaque\n'+
+    '- Tabela de atividade com barras de progresso e pills de status\n'+(clientes.length>0?
+    '- Seção de Performance TPV M-1 por Cliente: tabela com todos os clientes, barra mini por linha, pills de resumo (bons/atenção/zero) e destaque visual nos clientes críticos\n':'')+
+    '- Seções numeradas (01, 02...) para a análise\n'+
+    '- Seção de feedback final com fundo escuro\n'+
     '- Animações suaves de entrada (fadeUp)\n'+
     '- Responsivo para mobile\n\n'+
     'Conteúdo das seções:\n'+
-    '1. Resultado do Mês — o que o número representa, se o ritmo está bom ou preocupante\n'+
-    '2. Pontos Fortes — KPIs Ótimo/Bom com dados exatos + O QUE FAZER PARA MANTER cada um\n'+
-    '3. Pontos de Melhoria — para cada KPI abaixo: gap em número, causa provável, ação específica para fechar\n'+
-    '4. Plano de Ação — 3 ações com título, descrição e meta numérica para o próximo mês (use cards com número grande)\n'+
-    '5. Feedback Direto — mensagem pessoal no bloco escuro final. Use o nome do agente. Seja humano, direto, motivador.\n\n'+
-    'Linguagem: direta, objetiva, respeitosa. Use os dados como base. Evite frases genéricas.';
+    '1. Resultado do Mês\n'+
+    '2. Pontos Fortes — com O QUE FAZER PARA MANTER\n'+
+    '3. Pontos de Melhoria — gap em número, causa provável, ação específica\n'+(clientes.length>0?
+    '4. Clientes Críticos — análise dos clientes com TPV zero ou <70% do precificado, com ação específica para cada um\n'+
+    '5. Plano de Ação — 3 ações com meta numérica\n'+
+    '6. Feedback Direto — mensagem pessoal. Use o nome do agente.\n':
+    '4. Plano de Ação — 3 ações com meta numérica\n'+
+    '5. Feedback Direto — mensagem pessoal. Use o nome do agente.\n')+
+    'Linguagem: direta, objetiva, respeitosa. Use os dados como base.';
 }
 
 function copyPromptAgent(agId) {
@@ -687,18 +929,8 @@ function saveAgentAnalysis(agId) {
   extras[agId].aiAnalysis = el.value.trim();
   saveLocal();
   el.value = '';
-  // Show saved wrap
   var wrap = document.getElementById('saved-wrap-'+agId);
   if (wrap) wrap.style.display = '';
-  // Update badge
-  var toggle = document.getElementById('ai-body-'+agId);
-  if (toggle && toggle.previousElementSibling) {
-    var badgeSpan = toggle.previousElementSibling.querySelector('.badge');
-    if (!badgeSpan) {
-      var div = toggle.previousElementSibling.querySelector('div');
-      if (div) div.insertAdjacentHTML('afterbegin','<span class="badge badge-green" style="margin-right:4px">Relat&#243;rio salvo</span>');
-    }
-  }
 }
 
 function clearAgentAnalysis(agId) {
@@ -744,13 +976,10 @@ function savePdfReport(agId) {
         '<div style="font-family:Syne,sans-serif;font-size:40px;font-weight:800;color:#0f0f0d;line-height:1;letter-spacing:-.02em;margin-bottom:6px">Meta</div>'+
         '<div style="font-family:Syne,sans-serif;font-size:40px;font-weight:800;color:#00a651;line-height:1;letter-spacing:-.02em;margin-bottom:48px">do M&#234;s</div>'+
         '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:2px;margin-bottom:48px">'+
-          metaCard('NA', metaNA, '')+
-          metaCard('TPV M1', metaTPV, 'R$')+
-          metaCard('Churn', metaChurn, '%')+
+          metaCard('NA', metaNA, '')+metaCard('TPV M1', metaTPV, 'R$')+metaCard('Churn', metaChurn, '%')+
         '</div>'+
         '<div style="padding-top:24px;border-top:1px solid #e2e0d8;display:flex;justify-content:space-between;font-family:JetBrains Mono,monospace;font-size:10px;color:#a8a69e;letter-spacing:.06em">'+
-          '<span>RMR Individual &middot; '+esc(nome)+'</span>'+
-          '<span>'+proxLabel+'</span>'+
+          '<span>RMR Individual &middot; '+esc(nome)+'</span><span>'+proxLabel+'</span>'+
         '</div>'+
       '</div>';
   }
@@ -762,68 +991,6 @@ function savePdfReport(agId) {
 
   var blob = new Blob([printHtml], {type: 'text/html; charset=utf-8'});
   window.open(URL.createObjectURL(blob), '_blank');
-}
-
-function downloadHtmlReport(agId) {
-  var ag = agentes.find(function(a){ return a.id===agId; });
-  var html = (extras[agId] || {}).aiAnalysis || '';
-  if (!html) return;
-  var m = document.getElementById('month-select');
-  var y = document.getElementById('year-select').value;
-  var name = (ag ? ag.nome.toLowerCase().replace(/\s+/g,'-') : agId) + '-rmr-' + m.options[m.selectedIndex].text.toLowerCase() + '-' + y + '.html';
-  var blob = new Blob([html], {type: 'text/html; charset=utf-8'});
-  var a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = name;
-  a.click();
-}
-
-function openExportAgent(agId) {
-  var ag = agentes.find(function(a){ return a.id===agId; });
-  if (!ag) return;
-  var r  = ag.realizado || {};
-  var ex = extras[agId] || {};
-  var sc = calcScore(ag);
-  var du = getDU(), ml = getMesLabel();
-  var pp = Number(ex.propostas)||0, tt = Number(ex.tarefasTotais)||0, tv = Number(ex.tarefasVendas)||0;
-  var td = Number(ex.td)||0, re = Number(ex.reunioes)||0, tm = Number(ex.tpvMedio)||0;
-
-  function dotRow(label, val, th, display) {
-    if (!val) return '<tr><td>'+label+'</td><td colspan="2" style="color:#999">—</td></tr>';
-    var s=classify(val,th);
-    var dc=s==='otimo'?'dot-g':s==='bom'?'dot-y':'dot-r';
-    var badge=s==='otimo'?'Ótimo':s==='bom'?'Bom':'Ruim';
-    return '<tr><td>'+label+'</td><td>'+display+'</td><td><span class="dot '+dc+'"></span>'+badge+'</td></tr>';
-  }
-
-  var an = (ex.aiAnalysis||'').trim()
-    ? '<h3>Análise</h3><div class="doc-analysis">'+esc(ex.aiAnalysis)+'</div>'
-    : '<p style="font-family:sans-serif;font-size:13px;color:#999">Nenhuma análise salva ainda.</p>';
-
-  document.getElementById('export-doc').innerHTML =
-    '<h2>RMR Individual &mdash; '+esc(ag.nome)+'</h2>'+
-    '<div class="doc-sub">'+ml+' &middot; Stone Barbacena &middot; '+du+' dias úteis &middot; Trilha: '+(TRILHAS[ag.trilha]||'')+' &middot; '+new Date().toLocaleDateString('pt-BR')+'</div>'+
-    '<h3>Metas Oficiais</h3>'+
-    '<table><tr><th>KPI</th><th>Meta</th><th>Realizado</th><th>Ating.</th></tr>'+
-      '<tr><td>NA</td><td>'+ag.naMeta+'</td><td>'+(r.na||0)+'</td><td>'+sc.naA.toFixed(1)+'%</td></tr>'+
-      '<tr><td>TPV M1</td><td>'+fmtBRL(ag.tpvMeta)+'</td><td>'+fmtBRL(r.tpv||0)+'</td><td>'+sc.tpvA.toFixed(1)+'%</td></tr>'+
-      '<tr><td>Churn</td><td>'+ag.churnMeta+'%</td><td>'+(r.churn||0)+'%</td><td>'+sc.churnA.toFixed(1)+'%</td></tr>'+
-    '</table>'+
-    '<p style="font-family:sans-serif;font-size:13px;font-weight:700;margin:4px 0 12px">Score: '+sc.score.toFixed(1)+'%</p>'+
-    '<h3>Atividade</h3>'+
-    '<table><tr><th>KPI</th><th>Resultado</th><th>Status</th></tr>'+
-      dotRow('TPV Médio/Cred (M0)', tm, TH.tpvMedio, fmtBRL(tm))+
-      dotRow('Propostas', pp?pp/du:0, TH.propostas, pp?(pp/du).toFixed(2)+'/dia — total '+pp:'—')+
-      dotRow('Tarefas Totais', tt?tt/du:0, TH.tarefasTotais, tt?(tt/du).toFixed(2)+'/dia — total '+tt:'—')+
-      dotRow('Tarefas de Vendas', tv?tv/du:0, TH.tarefasVendas, tv?(tv/du).toFixed(2)+'/dia — total '+tv:'—')+
-      dotRow('TD', tv>0?td/tv:0, TH.td, td&&tv?(td/tv*100).toFixed(1)+'% — '+td+' TDs':'—')+
-      dotRow('Reuniões Agendadas', re, TH.reunioes, re+' reuniões')+
-    '</table>'+
-    '<p style="font-family:sans-serif;font-size:11px;color:#999;margin-top:4px">&#9679; Verde = Ótimo &nbsp; &#9679; Amarelo = Bom &nbsp; &#9679; Vermelho = Ruim</p>'+
-    an+
-    '<div class="doc-footer">RMR Dashboard &middot; '+esc(ag.nome)+' &middot; '+ml+'</div>';
-
-  document.getElementById('export-preview').classList.add('open');
 }
 
 // ── Export ────────────────────────────────────────────────────────────────────
@@ -838,6 +1005,15 @@ function openExport() {
     var td = Number(ex.td)||0, re = Number(ex.reunioes)||0;
     var tpvMed = Number(ex.tpvMedio) || 0;
 
+    // TPV clientes resumo
+    var clientes = tpvClientes[ag.id] || [];
+    var tpvClienteStr = '—';
+    if (clientes.length > 0) {
+      var tR = clientes.reduce(function(s,c){return s+c.realizado;},0);
+      var tP = clientes.reduce(function(s,c){return s+c.precificado;},0);
+      tpvClienteStr = tP>0?(tR/tP*100).toFixed(0)+'%':'—';
+    }
+
     function dot(val, th, label) {
       if (!val) return '<span style="color:#999">—</span>';
       var s = classify(val, th);
@@ -851,6 +1027,7 @@ function openExport() {
       '<td>'+sc.churnA.toFixed(1)+'%</td>'+
       '<td>'+dot(tpvMed,TH.tpvMedio,fmtBRL(tpvMed))+'</td>'+
       '<td><strong style="font-size:14px">'+sc.score.toFixed(1)+'%</strong></td>'+
+      '<td>'+tpvClienteStr+'</td>'+
       '<td>'+dot(pp?(pp/du):0,TH.propostas,pp?(pp/du).toFixed(2)+'/d':'—')+'</td>'+
       '<td>'+dot(tt?(tt/du):0,TH.tarefasTotais,tt?(tt/du).toFixed(2)+'/d':'—')+'</td>'+
       '<td>'+dot(tv?(tv/du):0,TH.tarefasVendas,tv?(tv/du).toFixed(2)+'/d':'—')+'</td>'+
@@ -859,23 +1036,15 @@ function openExport() {
     '</tr>';
   }).join('');
 
-  var an = aiAnalysis
-    ? '<h3>Análise</h3><div class="doc-analysis">'+aiAnalysis+'</div>'
-    : '<p style="color:#999;font-family:sans-serif;font-size:13px">Nenhuma análise gerada ainda.</p>';
-
   document.getElementById('export-doc').innerHTML =
     '<h2>RMR &mdash; '+ml+'</h2>'+
-    '<div class="doc-sub">Reunião Mensal de Resultado &middot; Stone Barbacena &middot; '+du+' dias úteis &middot; Gerado em '+new Date().toLocaleDateString('pt-BR')+'</div>'+
+    '<div class="doc-sub">Stone Barbacena &middot; '+du+' dias úteis &middot; '+new Date().toLocaleDateString('pt-BR')+'</div>'+
     '<h3>Resultados do Time</h3>'+
     '<table>'+
-      '<tr>'+
-        '<th>Agente</th><th>NA%</th><th>TPV%</th><th>Churn%</th><th>TPV Méd/Cred</th><th>Score</th>'+
-        '<th>Propostas</th><th>Trf Total</th><th>Trf Vendas</th><th>TD%</th><th>Reuniões</th>'+
-      '</tr>'+
-      (agRows||'<tr><td colspan="11" style="text-align:center;color:#999;padding:20px">Sem dados</td></tr>')+
+      '<tr><th>Agente</th><th>NA%</th><th>TPV%</th><th>Churn%</th><th>TPV Méd/Cred</th><th>Score</th><th>TPV Cli%</th><th>Propostas</th><th>Trf Total</th><th>Trf Vendas</th><th>TD%</th><th>Reuniões</th></tr>'+
+      (agRows||'<tr><td colspan="12" style="text-align:center;color:#999;padding:20px">Sem dados</td></tr>')+
     '</table>'+
-    '<p style="font-family:sans-serif;font-size:11px;color:#999;margin-top:6px">&#9679; Verde = Ótimo &nbsp; &#9679; Amarelo = Bom &nbsp; &#9679; Vermelho = Ruim</p>'+
-    an+
+    '<p style="font-family:sans-serif;font-size:11px;color:#999;margin-top:6px">&#9679; Verde = Ótimo &nbsp; &#9679; Amarelo = Bom &nbsp; &#9679; Vermelho = Ruim &nbsp; TPV Cli% = realizado/precificado dos clientes</p>'+
     '<div class="doc-footer">RMR Dashboard &middot; Stone Barbacena &middot; '+ml+'</div>';
 
   document.getElementById('export-preview').classList.add('open');
@@ -895,7 +1064,6 @@ function init() {
   document.getElementById('month-select').value = now.getMonth()+1;
   document.getElementById('month-select').addEventListener('change', function(){ loadLocal(); renderAll(); updateImportBtn(); });
   document.getElementById('year-select').addEventListener('change',  function(){ loadLocal(); renderAll(); updateImportBtn(); });
-
   loadLocal();
   renderAll();
   updateImportBtn();
