@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>RMR Dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <style>
     :root{--bg:#0f172a;--surface:#1e293b;--surface2:#273548;--border:#334155;--accent:#22c55e;--yellow:#facc15;--red:#f87171;--text:#f1f5f9;--muted:#94a3b8;--radius:12px}
     *{margin:0;padding:0;box-sizing:border-box}
@@ -380,18 +381,37 @@ function parseTpvExcel(file, agId, callback) {
   reader.readAsText(file, 'UTF-8');
 }
 
-// Converte xlsx via FileReader binário + SheetJS (se disponível) ou fallback TSV
+// Número vindo do Excel (já é number) ou de texto ("R$ 1.234,56", "1234.56")
+function numTpv(v) {
+  if (typeof v === 'number') return v;
+  var s = String(v || '').replace(/[^\d,.-]/g, '');
+  if (s.indexOf(',') > -1) s = s.replace(/\./g, '').replace(',', '.');
+  return parseFloat(s) || 0;
+}
+
+// Lê xlsx/xls via SheetJS; CSV/TSV como texto
 function processarArquivoTpv(file, agId) {
-  // Tenta como texto primeiro (funciona para CSV/TSV exportado do BI)
+  var ehExcel = /\.xlsx?$/i.test(file.name);
+  if (ehExcel && typeof XLSX === 'undefined') {
+    alert('Não foi possível carregar o leitor de Excel. Verifique a internet e recarregue a página.');
+    return;
+  }
   var reader = new FileReader();
   reader.onload = function(e) {
-    var text = e.target.result;
-    // Remove BOM
-    if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
-    // Detecta separador
-    var sep = text.indexOf('\t') > -1 ? '\t' : ',';
-    var rows = text.split('\n').map(function(r){ return r.split(sep).map(function(c){ return c.trim().replace(/^"|"$/g,''); }); });
-    var header = rows[0].map(function(h){ return h.toLowerCase(); });
+    var rows;
+    if (ehExcel) {
+      var wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+      rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' });
+    } else {
+      var text = e.target.result;
+      // Remove BOM
+      if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+      // Detecta separador
+      var sep = text.indexOf('\t') > -1 ? '\t' : (text.split('\n')[0].indexOf(';') > -1 ? ';' : ',');
+      rows = text.split('\n').map(function(r){ return r.split(sep).map(function(c){ return c.trim().replace(/^"|"$/g,''); }); });
+    }
+    rows = rows.map(function(r){ return r.map(function(c){ return typeof c === 'string' ? c.trim() : c; }); });
+    var header = rows[0].map(function(h){ return String(h).toLowerCase().replace(/-/g, '').replace(/\s+/g, ' '); });
     var iCliente = header.findIndex(function(h){ return h === 'cliente'; });
     var iReal    = header.findIndex(function(h){ return h === 'tpv m1'; });
     var iPrec    = header.findIndex(function(h){ return h === 'tpv precificado'; });
@@ -404,12 +424,13 @@ function processarArquivoTpv(file, agId) {
     var clientes = [];
     for (var i = 1; i < rows.length; i++) {
       var row = rows[i];
-      if (!row[iCliente] || row[iCliente] === '') continue;
+      var nomeCli = String(row[iCliente] || '').trim();
+      if (nomeCli === '') continue;
       // Ignora linhas de filtro ("Filtros aplicados")
-      if (row[iCliente].toLowerCase().includes('filtro')) continue;
-      var real = parseFloat((row[iReal]||'').replace(',','.')) || 0;
-      var prec = parseFloat((row[iPrec]||'').replace(',','.')) || 0;
-      if (prec > 0) clientes.push({ nome: row[iCliente], realizado: real, precificado: prec });
+      if (nomeCli.toLowerCase().includes('filtro')) continue;
+      var real = numTpv(row[iReal]);
+      var prec = numTpv(row[iPrec]);
+      if (prec > 0) clientes.push({ nome: nomeCli, realizado: real, precificado: prec });
     }
 
     if (clientes.length === 0) {
@@ -422,7 +443,8 @@ function processarArquivoTpv(file, agId) {
     // Re-render só a seção TPV desse agente
     renderTpvSection(agId);
   };
-  reader.readAsText(file, 'UTF-8');
+  if (ehExcel) reader.readAsArrayBuffer(file);
+  else reader.readAsText(file, 'UTF-8');
 }
 
 // ── TPV Section render ────────────────────────────────────────────────────────
